@@ -1,0 +1,28 @@
+cat > .gitignore << 'EOF'
+# Frontend
+node_modules/
+.next/
+.env
+.env.local
+
+# Backend (Java/Spring Boot)
+target/
+build/
+*.class
+.idea/
+*.iml
+.vscode/
+
+
+# Database / secrets config
+application.properties
+application.yml
+application-*.properties
+application-*.yml
+*.db
+*.sqlite
+*.mv.db
+
+# Mac
+.DS_Store
+EOF
