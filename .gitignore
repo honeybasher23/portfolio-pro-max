@@ -25,4 +25,4 @@ application-*.yml
 
 # Mac
 .DS_Store
-EOF
+EOF .DS_Store

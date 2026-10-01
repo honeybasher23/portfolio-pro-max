@@ -8,6 +8,10 @@ export default function TradingTerminal() {
   // 1. Pull both the state and the action from Zustand
   const buyingPower = useWalletStore((state) => state.buyingPower);
   const deductFunds = useWalletStore((state) => state.deductFunds);
+  const [isBuy, setIsBuy] = useState(true);
+  const [symbol, setSymbol] = useState("RELIANCE");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orderStatus, setOrderStatus] = useState(null);
 
   // 2. Set up local state for the inputs
   const [quantity, setQuantity] = useState(10);
@@ -15,6 +19,47 @@ export default function TradingTerminal() {
   
   // 3. Dynamically calculate the total
   const totalOrderValue = quantity * price;
+
+  const handleSubmitOrder = async (e) => {
+    e?.preventDefault();
+    if (!price || !quantity || Number(price) <= 0 || Number(quantity) <= 0) {
+      alert("Please enter a valid price and quantity.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setOrderStatus(null);
+
+    const payload = {
+      symbol: symbol,
+      isBuy: isBuy,
+      price: parseFloat(price),
+      quantity: parseInt(quantity, 10),
+    };
+
+    try {
+      const response = await fetch("http://localhost:8080/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Order submission failed");
+      }
+
+      const result = await response.text();
+      setOrderStatus({ type: "success", text: result || "Order placed successfully!" });
+      setQuantity("");
+    } catch (err) {
+      setOrderStatus({ type: "error", text: err.message });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const submitOrderToEngine = async (isBuyOrder) => {
     try {
@@ -45,14 +90,7 @@ export default function TradingTerminal() {
 };
 
   // 4. Create the execution function
-  const handleSubmitOrder = () => {
-    if (totalOrderValue <= buyingPower) {
-      deductFunds(totalOrderValue); // This instantly updates global state
-      console.log(`Executed: Bought ${quantity} shares at ₹${price}`);
-    } else {
-      alert("Trade Rejected: Insufficient Buying Power.");
-    }
-  };
+  
   // Mock OHLC data for RELIANCE.NS leading up to today
   const chartData = [
     { time: '2026-09-20', open: 2900, high: 2950, low: 2890, close: 2940 },
@@ -158,55 +196,113 @@ export default function TradingTerminal() {
         </section>
 
         {/* Right Col: Order Ticket */}
-        <aside className="col-span-3 flex flex-col bg-surface">
-          <PaneHeader title="ORDER ENTRY" icon={<Play size={14} />} />
-          <div className="p-4 flex flex-col gap-4 font-mono text-sm">
-            <div className="flex border border-border">
-              <button className="flex-1 bg-bidRed text-white py-2 font-bold hover:bg-opacity-90">BUY</button>
-              <button className="flex-1 bg-base text-textMuted py-2 font-bold hover:bg-surface">SELL</button>
-            </div>
-            
-            <div className="flex flex-col gap-1">
-              <label className="text-textMuted text-xs">ORDER TYPE</label>
-              <select className="bg-base border border-border p-2 outline-none focus:border-action text-textMain">
-                <option>LIMIT</option>
-                <option>MARKET</option>
-              </select>
-            </div>
+        {/* Right Col: Order Ticket */}
+<aside className="col-span-3 flex flex-col bg-surface border-l border-border">
+  <PaneHeader title="ORDER ENTRY" icon={<Play size={14} />} />
+  <form onSubmit={handleSubmitOrder} className="p-4 flex flex-col gap-4 font-mono text-sm">
+    
+    {/* Buy / Sell Selector Tabs */}
+    <div className="flex border border-border rounded overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsBuy(true)}
+        className={`flex-1 py-2 font-bold transition-colors ${
+          isBuy
+            ? "bg-green-600 text-white"
+            : "bg-base text-textMuted hover:bg-surface"
+        }`}
+      >
+        BUY
+      </button>
+      <button
+        type="button"
+        onClick={() => setIsBuy(false)}
+        className={`flex-1 py-2 font-bold transition-colors ${
+          !isBuy
+            ? "bg-red-600 text-white"
+            : "bg-base text-textMuted hover:bg-surface"
+        }`}
+      >
+        SELL
+      </button>
+    </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-textMuted text-xs">QUANTITY</label>
-              <input 
-                type="number" 
-                value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))} // Updates local state on typing
-                className="bg-base border border-border p-2 outline-none focus:border-action text-right text-textMain" 
-              />
-            </div>
+    {/* Symbol Indicator / Input */}
+    <div className="flex flex-col gap-1">
+      <label className="text-xs text-textMuted uppercase">Symbol</label>
+      <input
+        type="text"
+        value={symbol}
+        onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+        className="w-full bg-base border border-border px-3 py-2 text-white outline-none focus:border-accent"
+        placeholder="e.g. RELIANCE"
+      />
+    </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-textMuted text-xs">PRICE (₹)</label>
-              <input 
-                type="number" 
-                value={price}
-                onChange={(e) => setPrice(Number(e.target.value))} // Updates local state on typing
-                className="bg-base border border-border p-2 outline-none focus:border-action text-right text-textMain" 
-              />
-            </div>
+    {/* Price Input */}
+    <div className="flex flex-col gap-1">
+      <label className="text-xs text-textMuted uppercase">Limit Price</label>
+      <input
+        type="number"
+        step="0.05"
+        min="0"
+        value={price}
+        onChange={(e) => setPrice(e.target.value)}
+        className="w-full bg-base border border-border px-3 py-2 text-white outline-none focus:border-accent"
+        placeholder="0.00"
+      />
+    </div>
 
-            <div className="mt-4 pt-4 border-t border-border flex justify-between font-bold">
-              <span className="text-textMuted">TOTAL</span>
-              <span>₹{totalOrderValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
+    {/* Quantity Input */}
+    <div className="flex flex-col gap-1">
+      <label className="text-xs text-textMuted uppercase">Quantity</label>
+      <input
+        type="number"
+        step="1"
+        min="1"
+        value={quantity}
+        onChange={(e) => setQuantity(e.target.value)}
+        className="w-full bg-base border border-border px-3 py-2 text-white outline-none focus:border-accent"
+        placeholder="Shares"
+      />
+    </div>
 
-            <button 
-              onClick={handleSubmitOrder} // Fires the Zustand action
-              className="mt-2 w-full bg-border text-textMain py-3 font-bold hover:bg-action hover:text-white transition-colors"
-            >
-              SUBMIT ORDER
-            </button>
-          </div>
-        </aside>
+    {/* Total Value Preview */}
+    <div className="flex justify-between text-xs text-textMuted pt-1 border-t border-border">
+      <span>Estimated Total:</span>
+      <span className="text-white font-semibold">
+        {(parseFloat(price || 0) * parseInt(quantity || 0, 10)).toLocaleString("en-IN", {
+          style: "currency",
+          currency: "INR",
+        })}
+      </span>
+    </div>
+
+    {/* Submit Button */}
+    <button
+      type="submit"
+      disabled={isSubmitting}
+      className={`w-full py-3 font-bold text-white transition-opacity ${
+        isBuy ? "bg-green-600 hover:bg-green-500" : "bg-red-600 hover:bg-red-500"
+      } ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
+    >
+      {isSubmitting ? "SUBMITTING..." : `${isBuy ? "PLACE BUY ORDER" : "PLACE SELL ORDER"}`}
+    </button>
+
+    {/* Status Message */}
+    {orderStatus && (
+      <div
+        className={`p-2 text-xs border rounded ${
+          orderStatus.type === "success"
+            ? "border-green-500/40 bg-green-500/10 text-green-400"
+            : "border-red-500/40 bg-red-500/10 text-red-400"
+        }`}
+      >
+        {orderStatus.text}
+      </div>
+    )}
+  </form>
+</aside>
 
       </main>
     </div>
