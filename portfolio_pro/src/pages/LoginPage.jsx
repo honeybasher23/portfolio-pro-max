@@ -1,73 +1,98 @@
-import React from 'react';
-import { Lock } from 'lucide-react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient'; // Adjust path if needed
 
-export default function LoginPage() {
+export default function AuthPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
   const navigate = useNavigate();
 
-  const handleLogin = (e) => {
+  const handleSignUp = async (e) => {
     e.preventDefault();
-    // Placeholder: bypass real auth for now and route to terminal
-    navigate('/terminal');
+    setLoading(true);
+    setMessage('');
+    
+    const { error } = await supabase.auth.signUp({ email, password });
+    
+    if (error) setMessage(error.message);
+    else setMessage('Success! Check your email for the confirmation link, or log in if auto-confirm is enabled.');
+    setLoading(false);
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+    
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    
+    if (error) {
+      setMessage(error.message);
+    } else {
+      // If successful, push them into the trading terminal
+      navigate('/terminal');
+    }
+    setLoading(false);
   };
 
   return (
-    <div className="h-screen w-full flex items-center justify-center bg-base text-textMain font-sans">
-      
-      {/* Main Auth Container */}
-      <div className="w-full max-w-md bg-surface border border-border flex flex-col">
+    <div className="h-screen w-full flex items-center justify-center bg-base text-textMain font-mono">
+      <div className="w-full max-w-md p-8 border border-border bg-surface rounded flex flex-col gap-6">
         
-        {/* Pane Header */}
-        <div className="h-10 border-b border-border bg-base flex items-center px-4 gap-2 text-[10px] font-mono text-textMuted tracking-widest uppercase">
-          <Lock size={12} />
-          SYSTEM_AUTHENTICATION
+        <div className="text-center">
+          <h1 className="text-2xl font-bold font-sans tracking-tight mb-1">PORTFOLIOPRO</h1>
+          <p className="text-textMuted text-xs uppercase tracking-widest">Authentication Required</p>
         </div>
 
-        {/* Body */}
-        <div className="p-8">
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold tracking-tight text-textMain">PORTFOLIOPRO</h1>
-            <p className="text-textMuted text-xs mt-1 font-mono uppercase tracking-wider">Session ID_REQ</p>
+        <form className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-textMuted uppercase">Email</label>
+            <input 
+              type="email" 
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full border border-border bg-base px-3 py-2 outline-none focus:border-accent text-white"
+              placeholder="trader@example.com"
+            />
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-textMuted text-[10px] font-mono uppercase tracking-widest">Email Address</label>
-              <input 
-                type="email" 
-                required
-                className="w-full bg-base border border-border p-3 outline-none focus:border-action text-textMain font-mono text-sm transition-colors"
-                placeholder="trader@system.local"
-              />
-            </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-textMuted uppercase">Password</label>
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full border border-border bg-base px-3 py-2 outline-none focus:border-accent text-white"
+              placeholder="••••••••"
+            />
+          </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-textMuted text-[10px] font-mono uppercase tracking-widest flex justify-between">
-                <span>Password</span>
-                <a href="#" className="text-action hover:text-white transition-colors">RESET</a>
-              </label>
-              <input 
-                type="password" 
-                required
-                className="w-full bg-base border border-border p-3 outline-none focus:border-action text-textMain font-mono text-sm transition-colors"
-                placeholder="••••••••"
-              />
+          {message && (
+            <div className={`p-3 text-xs border ${message.includes('Success') ? 'border-askGreen text-askGreen' : 'border-bidRed text-bidRed'}`}>
+              {message}
             </div>
+          )}
 
+          <div className="flex gap-4 mt-2">
             <button 
-              type="submit" 
-              className="w-full bg-border text-textMain py-3 mt-4 font-bold hover:bg-action hover:text-white transition-colors tracking-widest text-xs uppercase"
+              onClick={handleLogin}
+              disabled={loading}
+              className="flex-1 bg-white text-black font-bold py-2 hover:bg-gray-200 transition-colors disabled:opacity-50"
             >
-              INITIALIZE SESSION
+              LOGIN
             </button>
-          </form>
-
-          <div className="mt-8 pt-6 border-t border-border text-center text-xs font-mono text-textMuted">
-            UNREGISTERED? <a href="#" className="text-action hover:text-white transition-colors ml-2">REQUEST ACCESS</a>
+            <button 
+              onClick={handleSignUp}
+              disabled={loading}
+              className="flex-1 border border-border text-white font-bold py-2 hover:bg-white/5 transition-colors disabled:opacity-50"
+            >
+              SIGN UP
+            </button>
           </div>
-        </div>
+        </form>
       </div>
-      
     </div>
   );
 }
