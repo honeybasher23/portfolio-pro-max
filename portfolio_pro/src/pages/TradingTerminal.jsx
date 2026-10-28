@@ -143,6 +143,7 @@ export default function TradingTerminal() {
             <Link to="/terminal" className="text-textMain font-bold">TERMINAL</Link>
             <Link to="/portfolio" className="text-textMuted hover:text-textMain transition-colors">PORTFOLIO</Link>
             <Link to="/profile" className="text-textMuted hover:text-textMain transition-colors">PROFILE</Link>
+            <Link to="/history" className="text-textMuted hover:text-textMain transition-colors">HISTORY</Link>
           </nav>
           <span className="text-textMuted">SYS_STATUS: <span className="text-askGreen">ONLINE</span></span>
           <span className="text-textMuted">MKT: <span className="text-textMain">NSE_EQ</span></span>
