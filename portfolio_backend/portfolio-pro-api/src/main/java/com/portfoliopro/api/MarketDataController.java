@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/market")
@@ -22,5 +23,10 @@ public class MarketDataController {
         } else {
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    @GetMapping("/chart/{symbol}")
+    public ResponseEntity<List<ChartCandle>> getChartData(@PathVariable String symbol) {
+        return ResponseEntity.ok(marketDataService.getChartData(symbol));
     }
 }
