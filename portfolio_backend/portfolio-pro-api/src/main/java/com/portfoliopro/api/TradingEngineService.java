@@ -15,9 +15,12 @@ public class TradingEngineService {
     @Autowired
     private PortfolioRepository portfolioRepository;
     
-    // <-- NEW: Inject your Yahoo Finance scraper
     @Autowired
     private MarketDataService marketDataService; 
+
+    // <-- NEW: Inject the Trade History database
+    @Autowired
+    private TradeHistoryRepository tradeHistoryRepository; 
 
     public void submitOrder(OrderRequest request) {
         String symbol = request.getSymbol();
@@ -25,7 +28,6 @@ public class TradingEngineService {
         int remainingQuantity = request.getQuantity();
         String type = request.getType();
 
-        // <-- NEW: THE MARKET ORDER EXPRESS LANE
         if ("MARKET".equalsIgnoreCase(type)) {
             BigDecimal livePrice = marketDataService.getLivePrice(symbol);
             if (livePrice == null) {
@@ -35,10 +37,12 @@ public class TradingEngineService {
             System.out.println("⚡ MARKET ORDER EXECUTED: " + remainingQuantity + " shares of " + symbol + " at live price ₹" + livePrice);
             updatePortfolio(symbol, isBuy, remainingQuantity, livePrice);
             
-            return; // Exit function so it doesn't touch the limit order book!
+            // <-- NEW: Record the Market Trade
+            recordTrade(symbol, isBuy, remainingQuantity, livePrice, "MARKET");
+            
+            return;
         }
 
-        // --- EXISTING LIMIT ORDER LOGIC BELOW ---
         BigDecimal price = request.getPrice();
         List<Order> oppositeOrders;
         if (isBuy) {
@@ -61,6 +65,9 @@ public class TradingEngineService {
                 System.out.println("✅ LIMIT TRADE EXECUTED: " + tradeQuantity + " shares of " + symbol + " at ₹" + executionPrice);
 
                 updatePortfolio(symbol, isBuy, tradeQuantity, executionPrice);
+                
+                // <-- NEW: Record the Limit Trade
+                recordTrade(symbol, isBuy, tradeQuantity, executionPrice, "LIMIT");
 
                 remainingQuantity -= tradeQuantity;
                 restingOrder.setQuantity(restingOrder.getQuantity() - tradeQuantity);
@@ -78,6 +85,12 @@ public class TradingEngineService {
             orderRepository.save(newOrder);
             System.out.println("📝 Order added to book: " + remainingQuantity + " shares at ₹" + price);
         }
+    }
+
+    // <-- NEW: Helper method to stamp the ledger
+    private void recordTrade(String symbol, boolean isBuy, int quantity, BigDecimal price, String type) {
+        TradeHistory history = new TradeHistory(symbol, isBuy, quantity, price, type);
+        tradeHistoryRepository.save(history);
     }
 
     private void updatePortfolio(String symbol, boolean isBuy, int quantity, BigDecimal executionPrice) {
