@@ -1,29 +1,79 @@
-import React, { useState } from 'react'; // <-- Added useState
+import { useState, useEffect } from "react"; 
 import { Activity, Briefcase, List, Play } from 'lucide-react';
-import { useWalletStore } from '../store/useWalletStore'; // <-- Ensure this is imported
+import { useWalletStore } from '../store/useWalletStore'; 
 import CandlestickChart from '../components/CandlestickChart';
 import { Link } from 'react-router-dom';
 
 export default function TradingTerminal() {
-  // 1. Pull both the state and the action from Zustand
   const buyingPower = useWalletStore((state) => state.buyingPower);
   const deductFunds = useWalletStore((state) => state.deductFunds);
+  
   const [isBuy, setIsBuy] = useState(true);
   const [symbol, setSymbol] = useState("RELIANCE");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderStatus, setOrderStatus] = useState(null);
-
-  // 2. Set up local state for the inputs
   const [quantity, setQuantity] = useState(10);
   const [price, setPrice] = useState(2945.00);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orderStatus, setOrderStatus] = useState(null);
+  const [orders, setOrders] = useState([]);
   
-  // 3. Dynamically calculate the total
-  const totalOrderValue = quantity * price;
+  // NEW: Live Market Price State
+  const [marketPrice, setMarketPrice] = useState(null);
+
+  // NEW: Fetch Live Price from Spring Boot
+  useEffect(() => {
+    const fetchLivePrice = async () => {
+      if (!symbol) return;
+      try {
+        const response = await fetch(`http://localhost:8080/api/market/price/${symbol}`);
+        if (response.ok) {
+          const livePrice = await response.json();
+          setMarketPrice(livePrice);
+          setPrice(livePrice); // Auto-fill the order ticket with the real price
+        } else {
+          setMarketPrice(null);
+        }
+      } catch (error) {
+        console.error("Failed to fetch live price:", error);
+      }
+    };
+
+    // Debounce slightly to prevent spamming Yahoo while typing
+    const timeoutId = setTimeout(() => {
+      fetchLivePrice();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [symbol]);
+
+  const fetchOrders = async () => {
+    try {
+      const response = await fetch("http://localhost:8080/api/orders");
+      if (response.ok) {
+        const data = await response.json();
+        setOrders(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch order book:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
 
   const handleSubmitOrder = async (e) => {
     e?.preventDefault();
     if (!price || !quantity || Number(price) <= 0 || Number(quantity) <= 0) {
       alert("Please enter a valid price and quantity.");
+      return;
+    }
+
+    // 1. Calculate total order cost
+    const totalCost = parseFloat(price) * parseInt(quantity, 10);
+
+    // 2. Block Buy orders if funds are insufficient
+    if (isBuy && totalCost > buyingPower) {
+      setOrderStatus({ type: "error", text: "INSUFFICIENT BUYING POWER" });
       return;
     }
 
@@ -52,46 +102,22 @@ export default function TradingTerminal() {
       }
 
       const result = await response.text();
-      setOrderStatus({ type: "success", text: result || "Order placed successfully!" });
+      setOrderStatus({ type: "success", text: result || "Order placed successfully" });
       setQuantity("");
+      
+      // 3. Deduct the funds from Zustand store (Only for Buys)
+      if (isBuy) {
+        deductFunds(totalCost);
+      }
+
+      fetchOrders();
     } catch (err) {
       setOrderStatus({ type: "error", text: err.message });
     } finally {
       setIsSubmitting(false);
     }
   };
-
-  const submitOrderToEngine = async (isBuyOrder) => {
-    try {
-        const response = await fetch("http://localhost:8080/api/orders", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            // Ensure these map to your actual React state variables
-            body: JSON.stringify({
-                symbol: "RELIANCE.NS",       // Replace with your selected stock state
-                isBuy: isBuyOrder,           // true for Buy, false for Sell
-                price: parseFloat(price),    // Replace with your price input state
-                quantity: parseInt(quantity) // Replace with your quantity input state
-            }),
-        });
-
-        if (response.ok) {
-            const message = await response.text();
-            console.log("Success:", message);
-            // You can add a success toast notification here
-        } else {
-            console.error("Order rejected by engine:", await response.text());
-        }
-    } catch (error) {
-        console.error("Failed to reach Spring Boot server:", error);
-    }
-};
-
-  // 4. Create the execution function
   
-  // Mock OHLC data for RELIANCE.NS leading up to today
   const chartData = [
     { time: '2026-09-20', open: 2900, high: 2950, low: 2890, close: 2940 },
     { time: '2026-09-21', open: 2940, high: 2960, low: 2920, close: 2930 },
@@ -101,10 +127,13 @@ export default function TradingTerminal() {
     { time: '2026-09-27', open: 2960, high: 2970, low: 2920, close: 2935 },
     { time: '2026-09-28', open: 2935, high: 2955, low: 2940, close: 2945.50 },
   ];
+
+  const bids = orders.filter(o => o.isBuy).sort((a, b) => b.price - a.price);
+  const asks = orders.filter(o => !o.isBuy).sort((a, b) => a.price - b.price);
+
   return (
     <div className="h-screen w-full flex flex-col bg-base text-textMain">
       
-      {/* Utility Nav */}
       <header className="h-12 border-b border-border flex items-center justify-between px-4 bg-surface text-xs font-mono">
         <div className="flex gap-6 items-center">
           <span className="font-sans font-bold text-sm tracking-tight">PORTFOLIOPRO</span>
@@ -123,22 +152,15 @@ export default function TradingTerminal() {
           </div>
           <div className="h-full border-l border-border pl-6 flex flex-col justify-center">
             <span className="text-textMuted text-[10px] uppercase tracking-wider">Buying Power</span>
-            
-            {/* 2. Inject the dynamic buyingPower variable here */}
             <span className="text-askGreen font-medium">
               ₹{buyingPower.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
-            
           </div>
         </div>
       </header>
 
-      {/* Main Grid Layout continues below... */}
-
-      {/* Main Grid Layout - Zero gap, separated by borders */}
       <main className="flex-1 grid grid-cols-12 overflow-hidden">
         
-        {/* Left Col: Watchlist & Portfolio summary */}
         <aside className="col-span-3 border-r border-border flex flex-col bg-surface">
           <PaneHeader title="MARKET WATCH" icon={<List size={14} />} />
           <div className="flex-1 overflow-auto p-2 space-y-1">
@@ -149,167 +171,170 @@ export default function TradingTerminal() {
           </div>
         </aside>
 
-        {/* Center Col: The Chart (Placeholder) & The Order Book */}
         <section className="col-span-6 border-r border-border flex flex-col">
-          {/* Chart Area */}
+          
           <div className="h-1/2 border-b border-border bg-base p-4 flex flex-col">
             <div className="flex justify-between font-mono text-sm mb-4">
-              <span className="text-xl font-bold">RELIANCE.NS</span>
-              <span className="text-askGreen text-xl font-bold">₹2,945.50</span>
+              <span className="text-xl font-bold">{symbol ? `${symbol}.NS` : "SYMBOL"}</span>
+              <span className="text-askGreen text-xl font-bold">
+                {marketPrice ? `₹${marketPrice.toFixed(2)}` : "Fetching..."}
+              </span>
             </div>
-            {/* Replaced placeholder with the Chart component */}
             <div className="flex-1 w-full border border-border">
               <CandlestickChart data={chartData} />
             </div>
           </div>
           
-          {/* The Matching Engine Showcase (Order Book) */}
+          {/* Rebuilt Matching Engine Order Book */}
           <div className="h-1/2 flex flex-col bg-surface">
-             <PaneHeader title="MATCHING ENGINE : ORDER BOOK" icon={<Activity size={14} />} />
-             <div className="flex-1 flex font-mono text-xs">
-                {/* Bids (Max-Heap) */}
-                <div className="flex-1 border-r border-border flex flex-col">
-                  <div className="grid grid-cols-3 text-textMuted p-2 border-b border-border bg-base text-right">
-                    <span>QTY</span>
-                    <span>BIDS (₹)</span>
-                  </div>
-                  <div className="p-2 space-y-1 text-right text-bidRed">
-                    <div className="grid grid-cols-3"><span className="text-textMain">150</span><span>2,945.00</span></div>
-                    <div className="grid grid-cols-3"><span className="text-textMain">45</span><span>2,944.80</span></div>
-                    <div className="grid grid-cols-3"><span className="text-textMain">300</span><span>2,944.50</span></div>
-                  </div>
+            <PaneHeader title="MATCHING ENGINE : ORDER BOOK" icon={<Activity size={14} />} />
+            <div className="flex-1 flex font-mono text-xs overflow-hidden">
+              
+              {/* Bids (Left Side) */}
+              <div className="flex-1 border-r border-border flex flex-col">
+                <div className="flex justify-between text-textMuted p-2 border-b border-border bg-base text-[10px]">
+                  <span>QTY</span>
+                  <span>BIDS (₹)</span>
                 </div>
-                {/* Asks (Min-Heap) */}
-                <div className="flex-1 flex flex-col">
-                  <div className="grid grid-cols-3 text-textMuted p-2 border-b border-border bg-base text-left">
-                    <span>ASKS (₹)</span>
-                    <span>QTY</span>
-                  </div>
-                  <div className="p-2 space-y-1 text-left text-askGreen">
-                    <div className="grid grid-cols-3"><span>2,945.50</span><span className="text-textMain">100</span></div>
-                    <div className="grid grid-cols-3"><span>2,946.00</span><span className="text-textMain">250</span></div>
-                    <div className="grid grid-cols-3"><span>2,946.15</span><span className="text-textMain">50</span></div>
-                  </div>
+                <div className="p-2 space-y-1 overflow-y-auto">
+                  {bids.length === 0 ? (
+                    <div className="text-textMuted italic text-center pt-4">No active bids</div>
+                  ) : (
+                    bids.map((bid) => (
+                      <div key={bid.id} className="flex justify-between hover:bg-white/5 px-1 cursor-pointer">
+                        <span className="text-textMuted">{bid.quantity}</span>
+                        <span className="text-white">{Number(bid.price).toFixed(2)}</span>
+                      </div>
+                    ))
+                  )}
                 </div>
-             </div>
+              </div>
+
+              {/* Asks (Right Side) */}
+              <div className="flex-1 flex flex-col">
+                <div className="flex justify-between text-textMuted p-2 border-b border-border bg-base text-[10px]">
+                  <span>ASKS (₹)</span>
+                  <span>QTY</span>
+                </div>
+                <div className="p-2 space-y-1 overflow-y-auto">
+                  {asks.length === 0 ? (
+                    <div className="text-textMuted italic text-center pt-4">No active asks</div>
+                  ) : (
+                    asks.map((ask) => (
+                      <div key={ask.id} className="flex justify-between hover:bg-white/5 px-1 cursor-pointer">
+                        <span className="text-white">{Number(ask.price).toFixed(2)}</span>
+                        <span className="text-textMuted">{ask.quantity}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+            </div>
           </div>
         </section>
 
-        {/* Right Col: Order Ticket */}
-        {/* Right Col: Order Ticket */}
-<aside className="col-span-3 flex flex-col bg-surface border-l border-border">
-  <PaneHeader title="ORDER ENTRY" icon={<Play size={14} />} />
-  <form onSubmit={handleSubmitOrder} className="p-4 flex flex-col gap-4 font-mono text-sm">
-    
-    {/* Buy / Sell Selector Tabs */}
-    <div className="flex border border-border rounded overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setIsBuy(true)}
-        className={`flex-1 py-2 font-bold transition-colors ${
-          isBuy
-            ? "bg-green-600 text-white"
-            : "bg-base text-textMuted hover:bg-surface"
-        }`}
-      >
-        BUY
-      </button>
-      <button
-        type="button"
-        onClick={() => setIsBuy(false)}
-        className={`flex-1 py-2 font-bold transition-colors ${
-          !isBuy
-            ? "bg-red-600 text-white"
-            : "bg-base text-textMuted hover:bg-surface"
-        }`}
-      >
-        SELL
-      </button>
-    </div>
+        <aside className="col-span-3 flex flex-col bg-surface border-l border-border">
+          <PaneHeader title="ORDER ENTRY" icon={<Play size={14} />} />
+          <form onSubmit={handleSubmitOrder} className="p-4 flex flex-col gap-4 font-mono text-sm">
+            
+            <div className="flex border border-border rounded overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setIsBuy(true)}
+                className={`flex-1 py-2 font-bold transition-colors ${
+                  isBuy ? "bg-green-600 text-white" : "bg-base text-textMuted hover:bg-surface"
+                }`}
+              >
+                BUY
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsBuy(false)}
+                className={`flex-1 py-2 font-bold transition-colors ${
+                  !isBuy ? "bg-red-600 text-white" : "bg-base text-textMuted hover:bg-surface"
+                }`}
+              >
+                SELL
+              </button>
+            </div>
 
-    {/* Symbol Indicator / Input */}
-    <div className="flex flex-col gap-1">
-      <label className="text-xs text-textMuted uppercase">Symbol</label>
-      <input
-        type="text"
-        value={symbol}
-        onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-        className="w-full bg-base border border-border px-3 py-2 text-white outline-none focus:border-accent"
-        placeholder="e.g. RELIANCE"
-      />
-    </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-textMuted uppercase">Symbol</label>
+              <input
+                type="text"
+                value={symbol}
+                onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                className="w-full bg-base border border-border px-3 py-2 text-white outline-none focus:border-accent"
+                placeholder="e.g. RELIANCE"
+              />
+            </div>
 
-    {/* Price Input */}
-    <div className="flex flex-col gap-1">
-      <label className="text-xs text-textMuted uppercase">Limit Price</label>
-      <input
-        type="number"
-        step="0.05"
-        min="0"
-        value={price}
-        onChange={(e) => setPrice(e.target.value)}
-        className="w-full bg-base border border-border px-3 py-2 text-white outline-none focus:border-accent"
-        placeholder="0.00"
-      />
-    </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-textMuted uppercase">Limit Price</label>
+              <input
+                type="number"
+                step="0.05"
+                min="0"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                className="w-full bg-base border border-border px-3 py-2 text-white outline-none focus:border-accent"
+                placeholder="0.00"
+              />
+            </div>
 
-    {/* Quantity Input */}
-    <div className="flex flex-col gap-1">
-      <label className="text-xs text-textMuted uppercase">Quantity</label>
-      <input
-        type="number"
-        step="1"
-        min="1"
-        value={quantity}
-        onChange={(e) => setQuantity(e.target.value)}
-        className="w-full bg-base border border-border px-3 py-2 text-white outline-none focus:border-accent"
-        placeholder="Shares"
-      />
-    </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-textMuted uppercase">Quantity</label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                className="w-full bg-base border border-border px-3 py-2 text-white outline-none focus:border-accent"
+                placeholder="Shares"
+              />
+            </div>
 
-    {/* Total Value Preview */}
-    <div className="flex justify-between text-xs text-textMuted pt-1 border-t border-border">
-      <span>Estimated Total:</span>
-      <span className="text-white font-semibold">
-        {(parseFloat(price || 0) * parseInt(quantity || 0, 10)).toLocaleString("en-IN", {
-          style: "currency",
-          currency: "INR",
-        })}
-      </span>
-    </div>
+            <div className="flex justify-between text-xs text-textMuted pt-1 border-t border-border">
+              <span>Estimated Total:</span>
+              <span className="text-white font-semibold">
+                {(parseFloat(price || 0) * parseInt(quantity || 0, 10)).toLocaleString("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                })}
+              </span>
+            </div>
 
-    {/* Submit Button */}
-    <button
-      type="submit"
-      disabled={isSubmitting}
-      className={`w-full py-3 font-bold text-white transition-opacity ${
-        isBuy ? "bg-green-600 hover:bg-green-500" : "bg-red-600 hover:bg-red-500"
-      } ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
-    >
-      {isSubmitting ? "SUBMITTING..." : `${isBuy ? "PLACE BUY ORDER" : "PLACE SELL ORDER"}`}
-    </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className={`w-full py-3 font-bold text-white transition-opacity mt-4 ${
+                isBuy ? "bg-green-600 hover:bg-green-500" : "bg-red-600 hover:bg-red-500"
+              } ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              {isSubmitting ? "SUBMITTING..." : `${isBuy ? "PLACE BUY ORDER" : "PLACE SELL ORDER"}`}
+            </button>
 
-    {/* Status Message */}
-    {orderStatus && (
-      <div
-        className={`p-2 text-xs border rounded ${
-          orderStatus.type === "success"
-            ? "border-green-500/40 bg-green-500/10 text-green-400"
-            : "border-red-500/40 bg-red-500/10 text-red-400"
-        }`}
-      >
-        {orderStatus.text}
-      </div>
-    )}
-  </form>
-</aside>
+            {orderStatus && (
+              <div
+                className={`p-2 text-xs border rounded ${
+                  orderStatus.type === "success"
+                    ? "border-askGreen/40 bg-askGreen/10 text-askGreen"
+                    : "border-bidRed/40 bg-bidRed/10 text-bidRed"
+                }`}
+              >
+                {orderStatus.text}
+              </div>
+            )}
+          </form>
+        </aside>
 
       </main>
     </div>
   );
 }
 
-// Sub-components
 function PaneHeader({ title, icon }) {
   return (
     <div className="h-8 border-b border-border bg-base flex items-center gap-2 px-3 text-[10px] text-textMuted font-mono tracking-widest uppercase">
