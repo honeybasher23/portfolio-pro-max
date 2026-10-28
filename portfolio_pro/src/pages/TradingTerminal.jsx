@@ -7,6 +7,8 @@ import { Link } from 'react-router-dom';
 export default function TradingTerminal() {
   const buyingPower = useWalletStore((state) => state.buyingPower);
   const deductFunds = useWalletStore((state) => state.deductFunds);
+
+  const [orderType, setOrderType] = useState("LIMIT"); // NEW
   
   const [isBuy, setIsBuy] = useState(true);
   const [symbol, setSymbol] = useState("RELIANCE");
@@ -75,7 +77,8 @@ export default function TradingTerminal() {
     }
 
     // 1. Calculate total order cost
-    const totalCost = parseFloat(price) * parseInt(quantity, 10);
+    const activePrice = orderType === "MARKET" ? marketPrice : parseFloat(price);
+    const totalCost = activePrice * parseInt(quantity, 10);
 
     // 2. Block Buy orders if funds are insufficient
     if (isBuy && totalCost > buyingPower) {
@@ -89,7 +92,8 @@ export default function TradingTerminal() {
     const payload = {
       symbol: symbol,
       isBuy: isBuy,
-      price: parseFloat(price),
+      type: orderType, // <-- Send the new type
+      price: orderType === "MARKET" ? 0 : parseFloat(price), // Price doesn't matter for Market
       quantity: parseInt(quantity, 10),
     };
 
@@ -268,15 +272,41 @@ export default function TradingTerminal() {
               />
             </div>
 
+            {/* NEW: Order Type Selector */}
+            <div className="flex gap-4 text-xs">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input 
+                  type="radio" 
+                  checked={orderType === "MARKET"} 
+                  onChange={() => setOrderType("MARKET")} 
+                /> Market
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input 
+                  type="radio" 
+                  checked={orderType === "LIMIT"} 
+                  onChange={() => setOrderType("LIMIT")} 
+                /> Limit
+              </label>
+            </div>
+
+            {/* Dynamic Price Input: Disabled if Market Order */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-textMuted uppercase">Limit Price</label>
+              <label className="text-xs text-textMuted uppercase">
+                {orderType === "MARKET" ? "Market Price (Est)" : "Limit Price"}
+              </label>
               <input
                 type="number"
                 step="0.05"
                 min="0"
-                value={price}
+                value={orderType === "MARKET" ? (marketPrice || "") : price}
                 onChange={(e) => setPrice(e.target.value)}
-                className="w-full bg-base border border-border px-3 py-2 text-white outline-none focus:border-accent"
+                disabled={orderType === "MARKET"}
+                className={`w-full border px-3 py-2 outline-none ${
+                  orderType === "MARKET" 
+                    ? "bg-surface border-border text-textMuted cursor-not-allowed" 
+                    : "bg-base border-border text-white focus:border-accent"
+                }`}
                 placeholder="0.00"
               />
             </div>

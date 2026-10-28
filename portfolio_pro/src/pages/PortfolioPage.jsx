@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Briefcase, PieChart, ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
 import { useWalletStore } from '../store/useWalletStore';
 import { Link } from 'react-router-dom';
@@ -6,23 +6,59 @@ import { Link } from 'react-router-dom';
 export default function PortfolioPage() {
   const buyingPower = useWalletStore((state) => state.buyingPower);
 
-  // Mock Position Data (In a real app, this comes from your Spring Boot backend)
-  const positions = [
-    { symbol: 'RELIANCE.NS', qty: 50, avgCost: 2850.00, cmp: 2945.50 },
-    { symbol: 'HDFCBANK.NS', qty: 120, avgCost: 1400.00, cmp: 1432.10 },
-    { symbol: 'TCS.NS', qty: 15, avgCost: 3950.00, cmp: 3890.00 },
-    { symbol: 'INFY.NS', qty: 40, avgCost: 1680.00, cmp: 1645.20 },
-  ];
+  // Replaced mock data with real state
+  const [holdings, setHoldings] = useState([]);
+  const [livePrices, setLivePrices] = useState({});
+
+  useEffect(() => {
+    // 1. Fetch holdings from Supabase via Spring Boot
+    const fetchPortfolio = async () => {
+      try {
+        const res = await fetch("http://localhost:8080/api/portfolio");
+        if (res.ok) {
+          const data = await res.json();
+          setHoldings(data);
+          
+          // 2. Fetch live Yahoo Finance prices for each holding
+          data.forEach(async (position) => {
+            try {
+              const priceRes = await fetch(`http://localhost:8080/api/market/price/${position.symbol}`);
+              if (priceRes.ok) {
+                const livePrice = await priceRes.json();
+                setLivePrices((prev) => ({ ...prev, [position.symbol]: livePrice }));
+              }
+            } catch (err) {
+              console.error(`Failed to fetch price for ${position.symbol}`, err);
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load portfolio:", err);
+      }
+    };
+
+    fetchPortfolio();
+  }, []);
+
+  // Format backend data to match your UI's expected structure
+  const positions = holdings.map((holding) => ({
+    symbol: holding.symbol,
+    qty: holding.totalShares,
+    avgCost: holding.averagePrice,
+    // Fallback to average price while the live price is fetching so P&L is cleanly 0
+    cmp: livePrices[holding.symbol] || holding.averagePrice 
+  }));
 
   // Calculate totals dynamically
   let totalInvested = 0;
   let totalCurrentValue = 0;
 
   const enrichedPositions = positions.map(pos => {
+    // Fixed the missing math operators here
     const invested = pos.qty * pos.avgCost;
     const currentValue = pos.qty * pos.cmp;
     const pnl = currentValue - invested;
-    const pnlPercent = (pnl / invested) * 100;
+    const pnlPercent = invested > 0 ? (pnl / invested) * 100 : 0;
     
     totalInvested += invested;
     totalCurrentValue += currentValue;
@@ -120,27 +156,33 @@ export default function PortfolioPage() {
                 </tr>
               </thead>
               <tbody>
-                {enrichedPositions.map((pos) => {
-                  const isProfit = pos.pnl >= 0;
-                  const colorClass = isProfit ? 'text-askGreen' : 'text-bidRed';
-                  const sign = isProfit ? '+' : '';
+                {enrichedPositions.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="p-8 text-center text-textMuted italic">No active positions. Execute trades in the Terminal to build your portfolio.</td>
+                  </tr>
+                ) : (
+                  enrichedPositions.map((pos) => {
+                    const isProfit = pos.pnl >= 0;
+                    const colorClass = isProfit ? 'text-askGreen' : 'text-bidRed';
+                    const sign = isProfit ? '+' : '';
 
-                  return (
-                    <tr key={pos.symbol} className="border-b border-border hover:bg-surface transition-colors">
-                      <td className="p-3 font-bold text-textMain">{pos.symbol}</td>
-                      <td className="p-3 text-right">{pos.qty}</td>
-                      <td className="p-3 text-right">₹{pos.avgCost.toFixed(2)}</td>
-                      <td className="p-3 text-right">₹{pos.cmp.toFixed(2)}</td>
-                      <td className="p-3 text-right">₹{pos.currentValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                      <td className={`p-3 text-right ${colorClass}`}>
-                        {sign}₹{pos.pnl.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className={`p-3 text-right ${colorClass}`}>
-                        {sign}{pos.pnlPercent.toFixed(2)}%
-                      </td>
-                    </tr>
-                  );
-                })}
+                    return (
+                      <tr key={pos.symbol} className="border-b border-border hover:bg-surface transition-colors">
+                        <td className="p-3 font-bold text-textMain">{pos.symbol}</td>
+                        <td className="p-3 text-right">{pos.qty}</td>
+                        <td className="p-3 text-right">₹{pos.avgCost.toFixed(2)}</td>
+                        <td className="p-3 text-right">₹{pos.cmp.toFixed(2)}</td>
+                        <td className="p-3 text-right">₹{pos.currentValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                        <td className={`p-3 text-right ${colorClass}`}>
+                          {sign}₹{pos.pnl.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className={`p-3 text-right ${colorClass}`}>
+                          {sign}{pos.pnlPercent.toFixed(2)}%
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
