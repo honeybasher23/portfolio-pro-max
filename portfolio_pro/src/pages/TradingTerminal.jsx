@@ -21,25 +21,31 @@ export default function TradingTerminal() {
 
   // NEW: Fetch Live Price from Spring Boot
   useEffect(() => {
-    const fetchLivePrice = async () => {
+    const fetchMarketData = async () => {
       if (!symbol) return;
       try {
-        const response = await fetch(`http://localhost:8080/api/market/price/${symbol}`);
-        if (response.ok) {
-          const livePrice = await response.json();
+        // Fetch Live Price
+        const priceRes = await fetch(`http://localhost:8080/api/market/price/${symbol}`);
+        if (priceRes.ok) {
+          const livePrice = await priceRes.json();
           setMarketPrice(livePrice);
-          setPrice(livePrice); // Auto-fill the order ticket with the real price
-        } else {
-          setMarketPrice(null);
+          setPrice(livePrice);
         }
+
+        // Fetch Live Chart Data
+        const chartRes = await fetch(`http://localhost:8080/api/market/chart/${symbol}`);
+        if (chartRes.ok) {
+          const data = await chartRes.json();
+          setChartData(data);
+        }
+
       } catch (error) {
-        console.error("Failed to fetch live price:", error);
+        console.error("Failed to fetch market data:", error);
       }
     };
 
-    // Debounce slightly to prevent spamming Yahoo while typing
     const timeoutId = setTimeout(() => {
-      fetchLivePrice();
+      fetchMarketData();
     }, 500);
 
     return () => clearTimeout(timeoutId);
@@ -118,15 +124,7 @@ export default function TradingTerminal() {
     }
   };
   
-  const chartData = [
-    { time: '2026-09-20', open: 2900, high: 2950, low: 2890, close: 2940 },
-    { time: '2026-09-21', open: 2940, high: 2960, low: 2920, close: 2930 },
-    { time: '2026-09-22', open: 2930, high: 2980, low: 2925, close: 2975 },
-    { time: '2026-09-23', open: 2975, high: 2990, low: 2930, close: 2945 },
-    { time: '2026-09-24', open: 2945, high: 2965, low: 2935, close: 2960 },
-    { time: '2026-09-27', open: 2960, high: 2970, low: 2920, close: 2935 },
-    { time: '2026-09-28', open: 2935, high: 2955, low: 2940, close: 2945.50 },
-  ];
+  const [chartData, setChartData] = useState([]);
 
   const bids = orders.filter(o => o.isBuy).sort((a, b) => b.price - a.price);
   const asks = orders.filter(o => !o.isBuy).sort((a, b) => a.price - b.price);
