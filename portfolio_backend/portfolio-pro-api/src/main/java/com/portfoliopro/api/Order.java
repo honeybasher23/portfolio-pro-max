@@ -1,6 +1,7 @@
 package com.portfoliopro.api;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -13,6 +14,7 @@ public class Order {
     private Long id;
     
     private String symbol;
+    @JsonProperty("isBuy") // <-- ADD THIS
     private boolean isBuy;
     private BigDecimal price;
     private int quantity;
@@ -35,4 +37,7 @@ public class Order {
     public BigDecimal getPrice() { return price; }
     public int getQuantity() { return quantity; }
     public LocalDateTime getTimestamp() { return timestamp; }
+    public void setQuantity(int quantity) { 
+        this.quantity = quantity; 
+    }
 }

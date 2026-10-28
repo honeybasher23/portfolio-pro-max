@@ -1,27 +1,27 @@
 package com.portfoliopro.api;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/orders")
-@CrossOrigin(origins = "http://localhost:5173") // Allow Vite frontend
+@CrossOrigin(origins = "http://localhost:5173")
 public class OrderController {
 
-    private final TradingEngineService tradingEngineService;
-
-    // Spring automatically injects the service via constructor
-    public OrderController(TradingEngineService tradingEngineService) {
-        this.tradingEngineService = tradingEngineService;
-    }
+    @Autowired
+    private TradingEngineService tradingEngineService;
 
     @PostMapping
     public ResponseEntity<String> placeOrder(@RequestBody OrderRequest orderRequest) {
-        try {
-            tradingEngineService.submitOrder(orderRequest);
-            return ResponseEntity.ok("Order submitted successfully for " + orderRequest.getSymbol());
-        } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Order failed: " + e.getMessage());
-        }
+        tradingEngineService.submitOrder(orderRequest);
+        return ResponseEntity.ok("Order placed successfully");
+    }
+
+    // New GET endpoint inside the class brackets
+    @GetMapping
+    public ResponseEntity<List<Order>> getOrderBook() {
+        return ResponseEntity.ok(tradingEngineService.getAllOrders());
     }
 }

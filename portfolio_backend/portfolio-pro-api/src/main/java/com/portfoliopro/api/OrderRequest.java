@@ -1,9 +1,12 @@
 package com.portfoliopro.api;
 
+
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 
 public class OrderRequest {
     private String symbol;
+    @JsonProperty("isBuy")
     private boolean isBuy;
     private BigDecimal price;
     private int quantity;
